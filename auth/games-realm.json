@@ -1,0 +1,95 @@
+{
+  "realm": "games",
+  "enabled": true,
+  "displayName": "Rediff Games (local testing)",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "browserFlow": "games-browser",
+  "authenticationFlows": [
+    {
+      "alias": "games-browser",
+      "description": "Use the temporary Rediff SSO identity provider for Games login",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "authenticatorConfig": "rediff-sso-redirect"
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "rediff-sso-redirect",
+      "config": { "defaultProvider": "rediff-sso" }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "games-web",
+      "name": "Rediff Games web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${GAMES_WEB_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:8080/oauth2/callback"],
+      "webOrigins": ["http://localhost:8080"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8080/"
+      },
+      "protocolMappers": [
+        {
+          "name": "games-web-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "games-web",
+            "access.token.claim": "true",
+            "id.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "rediff-sso",
+      "displayName": "Sign in with temporary Rediff SSO",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": true,
+      "storeToken": false,
+      "config": {
+        "clientId": "games-broker",
+        "clientSecret": "${AUTHENTIK_GAMES_CLIENT_SECRET}",
+        "authorizationUrl": "http://sso.localhost:9000/application/o/authorize/",
+        "tokenUrl": "http://sso.localhost:9000/application/o/token/",
+        "logoutUrl": "http://sso.localhost:9000/application/o/rediff-sso/end-session/",
+        "sendClientIdOnLogout": "true",
+        "sendIdTokenOnLogout": "true",
+        "userInfoUrl": "http://sso.localhost:9000/application/o/userinfo/",
+        "jwksUrl": "http://sso.localhost:9000/application/o/rediff-sso/jwks/",
+        "issuer": "http://sso.localhost:9000/application/o/rediff-sso/",
+        "useJwksUrl": "true",
+        "validateSignature": "true",
+        "defaultScope": "openid profile email",
+        "syncMode": "IMPORT"
+      }
+    }
+  ]
+}

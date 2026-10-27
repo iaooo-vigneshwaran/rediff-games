@@ -1,0 +1,83 @@
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    absolute_redirect off;
+
+    location = /chess { return 308 /chess/; }
+    location = /checkers { return 308 /checkers/; }
+    location = /backgammon { return 308 /backgammon/; }
+    location = /solitaire { return 308 /solitaire/; }
+    location = /sudoku { return 308 /sudoku/; }
+
+    location = /oauth2/auth {
+        internal;
+        proxy_pass http://oauth2-proxy:4180/oauth2/auth;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header Cookie $http_cookie;
+    }
+
+    location /oauth2/ {
+        proxy_pass http://oauth2-proxy:4180;
+        proxy_buffer_size 16k;
+        proxy_buffers 8 16k;
+        proxy_busy_buffers_size 32k;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location @oauth2_start {
+        rewrite ^ /oauth2/start break;
+        proxy_pass http://oauth2-proxy:4180;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Auth-Request-Redirect $scheme://$http_host$request_uri;
+    }
+
+    location = /auth/config {
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        return 200 '{"issuer":"${KEYCLOAK_ISSUER_URL}","clientId":"games-web"}';
+    }
+
+    location ^~ /chess/ {
+        auth_request /oauth2/auth;
+        error_page 401 = @oauth2_start;
+        add_header Cache-Control "no-store" always;
+        try_files $uri $uri/ =404;
+    }
+    location ^~ /checkers/ {
+        auth_request /oauth2/auth;
+        error_page 401 = @oauth2_start;
+        add_header Cache-Control "no-store" always;
+        try_files $uri $uri/ =404;
+    }
+    location ^~ /backgammon/ {
+        auth_request /oauth2/auth;
+        error_page 401 = @oauth2_start;
+        add_header Cache-Control "no-store" always;
+        try_files $uri $uri/ =404;
+    }
+    location ^~ /solitaire/ {
+        auth_request /oauth2/auth;
+        error_page 401 = @oauth2_start;
+        add_header Cache-Control "no-store" always;
+        try_files $uri $uri/ =404;
+    }
+    location ^~ /sudoku/ {
+        auth_request /oauth2/auth;
+        error_page 401 = @oauth2_start;
+        add_header Cache-Control "no-store" always;
+        try_files $uri $uri/ =404;
+    }
+
+    location / { try_files $uri $uri/ =404; }
+}

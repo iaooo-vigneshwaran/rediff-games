@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Play classic games on Rediff Games." />
+    <title>Rediff Games</title>
+    <link rel="stylesheet" href="/assets/portal.css" />
+    <script type="module" src="/assets/portal.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <div class="account" aria-live="polite">
+        <span id="account-name"></span>
+        <a id="login-link" href="/oauth2/start?rd=/">Log in</a>
+        <button id="logout-button" type="button" hidden>Log out</button>
+      </div>
+      <header class="header">
+        <p class="eyebrow">A little time to play</p>
+        <h1><span>Rediff</span> Games</h1>
+        <p>Five familiar games. Sign in to play.</p>
+      </header>
+
+      <nav class="games" aria-label="Choose a game">
+        <a class="game" href="/chess/">
+          <span class="symbol" aria-hidden="true">♞</span>
+          <span class="name">Chess</span>
+          <span class="arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="game" href="/checkers/">
+          <span class="symbol" aria-hidden="true">⛀</span>
+          <span class="name">Checkers</span>
+          <span class="arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="game" href="/backgammon/">
+          <span class="symbol" aria-hidden="true">⚄</span>
+          <span class="name">Backgammon</span>
+          <span class="arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="game" href="/solitaire/">
+          <span class="symbol" aria-hidden="true">♠</span>
+          <span class="name">Solitaire</span>
+          <span class="arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="game" href="/sudoku/">
+          <span class="symbol" aria-hidden="true">9</span>
+          <span class="name">Sudoku</span>
+          <span class="arrow" aria-hidden="true">↗</span>
+        </a>
+      </nav>
+    </main>
+  </body>
+</html>

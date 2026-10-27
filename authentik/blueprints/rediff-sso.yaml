@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Temporary Rediff SSO for Games
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+    blueprints.goauthentik.io/description: Local OIDC stand-in for Rediff SSO
+
+entries:
+  - model: authentik_providers_oauth2.scopemapping
+    id: rediff-sso-email-scope
+    state: present
+    identifiers:
+      name: Temporary Rediff SSO verified email
+    attrs:
+      name: Temporary Rediff SSO verified email
+      scope_name: email
+      description: Verified email address from the trusted local SSO fixture
+      expression: |
+        return {
+            "email": request.user.email,
+            "email_verified": True,
+        }
+
+  - model: authentik_providers_oauth2.oauth2provider
+    id: rediff-sso-provider
+    state: present
+    identifiers:
+      name: Temporary Rediff SSO
+    attrs:
+      name: Temporary Rediff SSO
+      client_type: confidential
+      client_id: games-broker
+      client_secret: !Env AUTHENTIK_GAMES_CLIENT_SECRET
+      grant_types:
+        - authorization_code
+      authentication_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
+      include_claims_in_id_token: true
+      issuer_mode: per_provider
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !KeyOf rediff-sso-email-scope
+      redirect_uris:
+        - matching_mode: strict
+          redirect_uri_type: authorization
+          url: http://auth.localhost:8081/realms/games/broker/rediff-sso/endpoint
+        - matching_mode: strict
+          redirect_uri_type: logout
+          url: http://auth.localhost:8081/realms/games/broker/rediff-sso/endpoint/logout_response
+
+  - model: authentik_core.application
+    id: rediff-sso-application
+    state: present
+    identifiers:
+      slug: rediff-sso
+    attrs:
+      name: Temporary Rediff SSO
+      slug: rediff-sso
+      provider: !KeyOf rediff-sso-provider
+      policy_engine_mode: any
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: alice
+    attrs:
+      name: Alice Tester
+      email: alice@example.test
+      is_active: true
+      path: users
+      type: internal
+      password: !Env MOCK_ALICE_PASSWORD
+      attributes:
+        given_name: Alice
+        family_name: Tester
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: bob
+    attrs:
+      name: Bob Tester
+      email: bob@example.test
+      is_active: true
+      path: users
+      type: internal
+      password: !Env MOCK_BOB_PASSWORD
+      attributes:
+        given_name: Bob
+        family_name: Tester
