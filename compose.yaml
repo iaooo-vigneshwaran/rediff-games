@@ -6,7 +6,8 @@ services:
     ports:
       - "8080:80"
     environment:
-      KEYCLOAK_ISSUER_URL: http://auth.localhost:8081/realms/games
+      OIDC_ISSUER_URL: http://sso.localhost:9000/application/o/rediff-sso/
+      OIDC_CLIENT_ID: games-web
     depends_on:
       - oauth2-proxy
 
@@ -14,12 +15,13 @@ services:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
     restart: unless-stopped
     environment:
-      OAUTH2_PROXY_PROVIDER: keycloak-oidc
-      OAUTH2_PROXY_OIDC_ISSUER_URL: http://auth.localhost:8081/realms/games
+      OAUTH2_PROXY_PROVIDER: oidc
+      OAUTH2_PROXY_OIDC_ISSUER_URL: http://sso.localhost:9000/application/o/rediff-sso/
       OAUTH2_PROXY_CLIENT_ID: games-web
-      OAUTH2_PROXY_CLIENT_SECRET: ${GAMES_WEB_CLIENT_SECRET:?Run python3 scripts/setup-local-auth.py first}
+      OAUTH2_PROXY_CLIENT_SECRET: ${AUTHENTIK_GAMES_CLIENT_SECRET:?Run python3 scripts/setup-local-auth.py first}
       OAUTH2_PROXY_REDIRECT_URL: http://localhost:8080/oauth2/callback
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?Run python3 scripts/setup-local-auth.py first}
+      OAUTH2_PROXY_COOKIE_NAME: _games_oidc
       OAUTH2_PROXY_COOKIE_SECURE: "false"
       OAUTH2_PROXY_COOKIE_HTTPONLY: "true"
       OAUTH2_PROXY_COOKIE_SAMESITE: lax
@@ -30,36 +32,12 @@ services:
       OAUTH2_PROXY_REVERSE_PROXY: "true"
       OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
       OAUTH2_PROXY_CODE_CHALLENGE_METHOD: S256
-      OAUTH2_PROXY_SCOPE: "openid profile email"
+      OAUTH2_PROXY_SCOPE: "openid profile email offline_access"
       OAUTH2_PROXY_UPSTREAMS: static://200
-      OAUTH2_PROXY_WHITELIST_DOMAINS: localhost:8080,auth.localhost:8081
+      OAUTH2_PROXY_WHITELIST_DOMAINS: localhost:8080,sso.localhost:9000
     depends_on:
-      keycloak:
+      authentik-server:
         condition: service_healthy
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.8.1
-    command: start-dev --import-realm
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Run python3 scripts/setup-local-auth.py first}
-      KC_HTTP_PORT: "8081"
-      KC_HOSTNAME: http://auth.localhost:8081
-      GAMES_WEB_CLIENT_SECRET: ${GAMES_WEB_CLIENT_SECRET:?Run python3 scripts/setup-local-auth.py first}
-      AUTHENTIK_GAMES_CLIENT_SECRET: ${AUTHENTIK_GAMES_CLIENT_SECRET:?Run python3 scripts/setup-local-auth.py first}
-    ports:
-      - "8081:8081"
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8081'"]
-      interval: 5s
-      timeout: 3s
-      retries: 24
-    volumes:
-      - ./auth/games-realm.json:/opt/keycloak/data/import/games-realm.json:ro
-    networks:
-      default:
-        aliases:
-          - auth.localhost
 
   authentik-postgres:
     image: docker.io/library/postgres:16-alpine

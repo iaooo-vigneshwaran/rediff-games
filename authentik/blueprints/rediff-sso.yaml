@@ -30,10 +30,11 @@ entries:
     attrs:
       name: Temporary Rediff SSO
       client_type: confidential
-      client_id: games-broker
+      client_id: games-web
       client_secret: !Env AUTHENTIK_GAMES_CLIENT_SECRET
       grant_types:
         - authorization_code
+        - refresh_token
       authentication_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
@@ -43,14 +44,15 @@ entries:
       property_mappings:
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
         - !KeyOf rediff-sso-email-scope
       redirect_uris:
         - matching_mode: strict
           redirect_uri_type: authorization
-          url: http://auth.localhost:8081/realms/games/broker/rediff-sso/endpoint
+          url: http://localhost:8080/oauth2/callback
         - matching_mode: strict
           redirect_uri_type: logout
-          url: http://auth.localhost:8081/realms/games/broker/rediff-sso/endpoint/logout_response
+          url: http://localhost:8080/
 
   - model: authentik_core.application
     id: rediff-sso-application

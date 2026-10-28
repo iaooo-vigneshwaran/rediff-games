@@ -10,8 +10,6 @@ PROJECT = Path(__file__).resolve().parent.parent
 TARGET = PROJECT / ".env"
 
 generated = {
-    "KEYCLOAK_ADMIN_PASSWORD": token_urlsafe(24),
-    "GAMES_WEB_CLIENT_SECRET": token_urlsafe(32),
     "OAUTH2_PROXY_COOKIE_SECRET": urlsafe_b64encode(token_bytes(32)).decode("ascii"),
     "AUTHENTIK_POSTGRES_PASSWORD": token_urlsafe(32),
     "AUTHENTIK_SECRET_KEY": token_urlsafe(48),

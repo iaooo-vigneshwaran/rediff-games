@@ -45,7 +45,7 @@ server {
     location = /auth/config {
         default_type application/json;
         add_header Cache-Control "no-store";
-        return 200 '{"issuer":"${KEYCLOAK_ISSUER_URL}","clientId":"games-web"}';
+        return 200 '{"issuer":"${OIDC_ISSUER_URL}","clientId":"${OIDC_CLIENT_ID}"}';
     }
 
     location ^~ /chess/ {

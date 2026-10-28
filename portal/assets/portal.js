@@ -33,11 +33,20 @@ logout.addEventListener('click', async () => {
     const response = await fetch('/auth/config', { cache: 'no-store' });
     if (!response.ok) throw new Error('Authentication configuration is unavailable.');
     const { issuer, clientId } = await response.json();
-    const identityLogout = new URL(`${issuer}/protocol/openid-connect/logout`);
+    const discoveryResponse = await fetch(`${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`, { cache: 'no-store' });
+    if (!discoveryResponse.ok) throw new Error('OIDC discovery is unavailable.');
+    const discovery = await discoveryResponse.json();
+    if (discovery.issuer !== issuer || !discovery.end_session_endpoint) {
+      throw new Error('OIDC logout is unavailable.');
+    }
+    const identityLogout = new URL(discovery.end_session_endpoint);
+    // OAuth2 Proxy inserts the session ID token before clearing its cookie.
+    identityLogout.searchParams.set('id_token_hint', '{id_token}');
     identityLogout.searchParams.set('client_id', clientId);
     identityLogout.searchParams.set('post_logout_redirect_uri', `${location.origin}/`);
     const appLogout = new URL('/oauth2/sign_out', location.origin);
-    appLogout.searchParams.set('rd', identityLogout.toString());
+    // Keep the placeholder literal inside rd so OAuth2 Proxy can replace it.
+    appLogout.searchParams.set('rd', identityLogout.toString().replace('%7Bid_token%7D', '{id_token}'));
     location.assign(appLogout.toString());
   } catch {
     location.assign('/oauth2/sign_out?rd=/');

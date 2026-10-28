@@ -26,15 +26,16 @@ each game.
 
 ## Local login test
 
-The local stack runs six services. NGINX serves the portal and games, OAuth2
-Proxy manages the Games session, and the Keycloak `games` realm brokers login.
+The local stack runs five services. NGINX serves the portal and games, and OAuth2
+Proxy manages the Games session using OIDC directly with Authentik.
 Authentik server, Authentik worker, and PostgreSQL provide the temporary Rediff
 SSO. No real Rediff account is used.
 
 The request path is:
 
 ```text
-Browser -> NGINX -> OAuth2 Proxy -> Games Keycloak -> Authentik -> PostgreSQL
+Browser -> NGINX -> OAuth2 Proxy -> Authentik
+Authentik -> PostgreSQL (identity and session storage)
 ```
 
 The Authentik worker handles background jobs and applies the declarative
@@ -53,7 +54,7 @@ python3 scripts/setup-local-auth.py
 ```
 
 Open `.env` locally to see the generated test-user passwords. Then build and
-start all six local services. On the first start, Authentik initializes its
+start all five local services. On the first start, Authentik initializes its
 database and can take a few minutes to become healthy:
 
 ```sh
@@ -67,8 +68,6 @@ Log out. The next game visit after a complete logout requires signing in again.
 
 The local administration endpoints are:
 
-- Keycloak: `http://auth.localhost:8081/`, username `admin`, password
-  `KEYCLOAK_ADMIN_PASSWORD` from `.env`.
 - Authentik: `http://sso.localhost:9000/if/admin/`, username `akadmin`, password
   `AUTHENTIK_ADMIN_PASSWORD` from `.env`.
 
@@ -80,6 +79,12 @@ and preservation of the requested URL:
 python3 scripts/smoke-auth.py
 ```
 
+Check the portal logout handler and its discovery-failure fallback with Node.js:
+
+```sh
+node scripts/check-portal-logout.mjs
+```
+
 The interactive username/password and logout steps must be checked in a browser
 because Authentik's flow UI is JavaScript-driven. Direct requests for `/chess/`,
 `/checkers/`, `/backgammon/`, `/solitaire/`, and `/sudoku/`, including their
@@ -88,14 +93,35 @@ development stack uses HTTP and sets `OAUTH2_PROXY_COOKIE_SECURE=false` only to
 make local testing possible.
 
 These URLs and Authentik users are local fixtures, not production settings. For
-production, expose Games and Keycloak over HTTPS, set the session cookie's
-Secure flag, use production secrets and persistent Keycloak storage, and replace
-the `rediff-sso` identity provider endpoints with the real Rediff SSO
-configuration. That replacement requires Rediff's protocol, endpoints, client
-registration, identity claims, and logout contract. In particular, this fixture
-marks its local email addresses as verified; that trust must be reviewed against
-Rediff's actual email-verification guarantee. The temporary Authentik server,
-worker, and PostgreSQL services can then be removed.
+production, expose Games and the SSO provider over HTTPS, set the session cookie's
+Secure flag, and use production secrets. To replace the temporary Authentik fixture
+with real Rediff SSO, configure OAuth2 Proxy's issuer, client credentials, scopes,
+and allowed logout destination; set Games' `OIDC_ISSUER_URL` and `OIDC_CLIENT_ID`
+to match. Register the Games callback and post-logout URLs with that provider.
+This requires Rediff's actual OIDC endpoints, identity claims, and logout contract.
+In particular, this fixture marks local email addresses as verified; review that
+trust against Rediff's actual email-verification guarantee. The temporary Authentik
+server, worker, and PostgreSQL services can then be removed.
+
+OAuth2 Proxy requests authorization code flow with PKCE and `offline_access` for
+refresh tokens. The portal discovers the OIDC end-session endpoint, then sends
+logout through OAuth2 Proxy so it inserts the ID token hint and clears the Games
+cookie before redirecting to Authentik. Complete Authentik's logout flow to end
+the SSO session. If discovery fails, the fallback clears only the Games session.
+
+When upgrading an existing local stack, apply the updated provider blueprint
+before recreating OAuth2 Proxy. This preserves the Authentik database and users:
+
+```sh
+docker compose exec -T authentik-worker ak apply_blueprint /blueprints/custom/rediff-sso.yaml
+docker compose up --build -d
+```
+
+The old Keycloak container may remain as an unused orphan after upgrading. It
+can be stopped without deleting it or the Authentik database. Existing `.env`
+files may retain unused `KEYCLOAK_ADMIN_PASSWORD` and `GAMES_WEB_CLIENT_SECRET`
+entries; the new stack does not use them. The new Games cookie name requires
+users to sign in again after migration.
 
 The existing optional Puter integrations remain independent: online play in
 Chess, Checkers, and Backgammon and cloud saves in Solitaire and Sudoku may
@@ -107,7 +133,8 @@ run outside this server; server access checks cannot prevent that.
 
 The image contains the assembled static site and NGINX, but protected game
 paths depend on OAuth2 Proxy. Run it with the Compose stack above or provide
-compatible proxy and Keycloak services and set `KEYCLOAK_ISSUER_URL`.
+a compatible OIDC-configured OAuth2 Proxy and set `OIDC_ISSUER_URL` and
+`OIDC_CLIENT_ID`. The discovery endpoint must permit browser access for logout.
 Generated metadata points to `games.rediff.com`.
 
 ## Licensing
