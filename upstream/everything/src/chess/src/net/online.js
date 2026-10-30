@@ -1,11 +1,7 @@
 /**
- * Online play over the Puter Peer API (WebRTC data channels with built-in
- * signaling — https://docs.puter.com/Peer/).
+ * Online play over native WebRTC data channels with manual offer/answer exchange.
  *
- * The Puter SDK is loaded lazily, only when the user enters online mode, so
- * offline play never pays for it. An OnlineSession wraps one private
- * host/guest game: the host serves an invite code, exactly one guest may
- * connect, and both sides exchange JSON messages:
+ * One private host/guest game exchanges JSON messages after manual setup:
  *
  *   {t:'start', v, color, name, time}
  *                                host -> guest: assigned color, host's name,
@@ -24,7 +20,7 @@
  * remote/spontaneous closure surfaces through onClose exactly once.
  */
 
-const PUTER_SRC = 'https://js.puter.com/v2/';
+import { DirectPeer, CONNECT_ERROR } from '../../../shared/direct-webrtc.js';
 // Bumped to 2 when clocks arrived: a peer on version 1 would play the same
 // moves with no clock at all and disagree about the result, so a mismatch has
 // to be turned away (which the version check already does) rather than papered
@@ -32,46 +28,7 @@ const PUTER_SRC = 'https://js.puter.com/v2/';
 const PROTOCOL_VERSION = 2;
 const OPEN_TIMEOUT_MS = 30000;
 
-let puterPromise = null;
-
-/** Load the Puter SDK on demand; resolves with the `puter` global. */
-export function loadPuter() {
-  if (window.puter) return Promise.resolve(window.puter);
-  if (!puterPromise) {
-    puterPromise = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = PUTER_SRC;
-      script.onload = () => {
-        if (window.puter) resolve(window.puter);
-        else reject(new Error('Puter SDK loaded but is unavailable.'));
-      };
-      script.onerror = () => {
-        puterPromise = null; // allow a retry after transient network failures
-        script.remove();
-        reject(new Error('Could not load the Puter SDK. Check your connection.'));
-      };
-      document.head.appendChild(script);
-    });
-  }
-  return puterPromise;
-}
-
-/**
- * Make sure the user is signed in before touching the peer API. Doing this
- * explicitly (rather than letting serve()/connect() prompt implicitly) keeps
- * the popup inside the user's click gesture and turns a dismissed or blocked
- * popup into a clean rejection instead of a hang.
- */
-async function ensureSignedIn(puter) {
-  if (puter.auth?.isSignedIn?.()) return;
-  await puter.auth.signIn();
-}
-
-/**
- * Display names cross the wire (and the Puter metadata is typed loosely), so
- * accept only reasonable strings — anything else renders as the generic
- * "Opponent"/"Your friend" fallback.
- */
+/** Bound display names received from the other browser. */
 function cleanName(value) {
   if (typeof value !== 'string') return null;
   return value.trim().slice(0, 40) || null;
@@ -116,91 +73,51 @@ export class OnlineSession {
     this.opponentName = null;
     this.inviteCode = null;
     this.connected = false;
-    this._server = null;
+    this._peer = null;
     this._conn = null;
     this._myName = null;
     this._openTimer = 0;
     this._ended = false;
   }
 
-  /** Create a private game. Resolves with the invite code once serving. */
+  _createPeer() {
+    this._peer = new DirectPeer('chess', (channel) => this._adopt(channel),
+      (reason) => this._end(reason));
+    this._myName = this.role === 'host' ? 'Host' : 'Guest';
+    return this._peer;
+  }
+
+  /** Generate the complete offer for the guest to paste. */
   async host(myColor, timeId) {
-    const puter = await loadPuter();
     this.role = 'host';
     this.myColor = myColor;
     this.timeId = cleanTimeId(timeId);
-    await ensureSignedIn(puter);
-    if (this._ended) return null;
-    const server = await puter.peer.serve();
-    if (this._ended) {
-      // leave() ran while serve() was awaiting (e.g. auth prompt dismissed
-      // after the user already cancelled) — don't keep a stray server.
-      server.close?.();
-      return null;
-    }
-    this._server = server;
-    this.inviteCode = server.inviteCode;
-    this._fetchMyName(puter);
-
-    server.addEventListener('connection', (event) => {
-      if (this._ended) {
-        // The server may outlive leave() (close() support varies); tell late
-        // joiners why instead of letting them wait out the open timeout.
-        try {
-          event.conn.close?.('This game is no longer available.');
-        } catch {
-          // Nothing to clean up.
-        }
-        return;
-      }
-      if (this._conn) {
-        // Private 1v1: turn away anyone else using the same invite code.
-        event.conn.close('This game already has two players.');
-        return;
-      }
-      this.opponentName = cleanName(event.user?.username);
-      this._adopt(event.conn);
-    });
-    return this.inviteCode;
+    try {
+      this.inviteCode = await this._createPeer().offer();
+      return this.inviteCode;
+    } catch (error) { this.leave(); throw error; }
   }
 
-  /** Join a game created by a friend. */
-  async join(inviteCode) {
-    const puter = await loadPuter();
+  /** Apply an offer and return the complete answer for the host. */
+  async join(offer) {
     this.role = 'guest';
-    await ensureSignedIn(puter);
-    if (this._ended) return;
-    const conn = await puter.peer.connect(inviteCode);
-    if (this._ended) {
-      conn.close('Cancelled.');
-      return;
-    }
-    this._fetchMyName(puter);
-    this.opponentName = cleanName(conn.owner?.username);
-    this._adopt(conn);
+    try {
+      return await this._createPeer().answer(offer);
+    } catch (error) { this.leave(); throw error; }
   }
 
-  _fetchMyName(puter) {
-    // serve()/connect() already authenticated us, so this cannot prompt.
-    puter.auth
-      .getUser()
-      .then((user) => {
-        this._myName = user?.username || null;
-      })
-      .catch(() => {});
+  async acceptAnswer(answer) {
+    if (!this._peer || this._ended) throw new Error('Create a fresh game first.');
+    return this._peer.acceptAnswer(answer);
   }
 
   _adopt(conn) {
-    // Every listener checks `this._conn === conn` so that a connection the
-    // session has already moved past (a host reverting to waiting) can no
-    // longer affect it.
     this._conn = conn;
-    this._openTimer = setTimeout(() => {
-      this._connFailed(conn, 'Could not reach the other player.');
-    }, OPEN_TIMEOUT_MS);
-
     conn.addEventListener('open', () => {
       if (this._ended || this._conn !== conn) return;
+      this._openTimer = setTimeout(() => {
+        this._connFailed(conn, 'The game handshake timed out. Start a fresh exchange.');
+      }, OPEN_TIMEOUT_MS);
       if (this.role === 'host') {
         // The guest plays the other color; handshake completes on 'joined'.
         this._send({
@@ -215,51 +132,17 @@ export class OnlineSession {
     conn.addEventListener('message', (event) => {
       if (this._conn === conn) this._onMessage(event);
     });
-    conn.addEventListener('close', (event) => {
-      if (this._conn !== conn) return;
-      const reason = event.reason === 'bye' ? 'left' : event.reason;
-      // A close with no reason before the handshake only reaches a guest —
-      // hosts go back to waiting instead (see _connFailed) — and by far the
-      // likeliest cause is a code that is mistyped or no longer being served,
-      // so say so rather than reporting a bare failure.
-      this._connFailed(
-        conn,
-        reason ||
-          (this.connected
-            ? 'left'
-            : 'Could not join — check the code and try again.'),
-      );
+    conn.addEventListener('close', () => {
+      if (this._conn === conn) this._connFailed(conn, this.connected ? 'left' : CONNECT_ERROR);
     });
-    conn.addEventListener('error', (event) => {
-      if (this._conn !== conn) return;
-      const detail = event.error?.message || '';
-      this.handlers.onError(
-        detail ? `Connection error: ${detail}` : 'Connection error.',
-      );
+    conn.addEventListener('error', () => {
+      if (this._conn === conn) this._connFailed(conn, CONNECT_ERROR);
     });
   }
 
-  /**
-   * A connection ended or timed out. A host whose handshake never completed
-   * reverts to waiting for another joiner (the invite code stays valid);
-   * anything else ends the session.
-   */
+  /** Failed manual exchanges need a fresh offer and answer. */
   _connFailed(conn, reason) {
     if (this._ended || this._conn !== conn) return;
-    if (this.role === 'host' && !this.connected) {
-      clearTimeout(this._openTimer);
-      try {
-        conn.close?.('Connection failed.');
-      } catch {
-        // Already closed.
-      }
-      this._conn = null;
-      this.opponentName = null;
-      this.handlers.onError(
-        "That join attempt didn't complete — still waiting for your friend.",
-      );
-      return;
-    }
     this._end(reason);
   }
 
@@ -322,12 +205,7 @@ export class OnlineSession {
         if (this.connected) this.handlers.onRematchDecline();
         break;
       case 'bye':
-        // A guest backing out before the handshake shouldn't end hosting.
-        if (this.role === 'host' && !this.connected) {
-          this._connFailed(this._conn, 'left');
-        } else {
-          this._end('left');
-        }
+        this._end('left');
         break;
       default:
         // Unknown message types are ignored for forward compatibility.
@@ -410,16 +288,16 @@ export class OnlineSession {
     this.connected = false;
     clearTimeout(this._openTimer);
     try {
-      this._conn?.close?.('bye');
+      this._conn?.close?.();
     } catch {
       // Already closed.
     }
     try {
-      this._server?.close?.();
+      this._peer?.close();
     } catch {
       // Already closed.
     }
     this._conn = null;
-    this._server = null;
+    this._peer = null;
   }
 }

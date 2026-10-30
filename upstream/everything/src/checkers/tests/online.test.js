@@ -3,8 +3,8 @@ import { OnlineSession } from '../src/net/online.js';
 import { Checkers } from '../src/engine/checkers.js';
 
 /**
- * The protocol layer, driven without a network. host()/join() are what need
- * the Puter SDK; everything after the connection exists is message handling,
+ * The protocol layer, driven without a network. host()/join() negotiate
+ * native WebRTC; everything after the connection exists is message handling,
  * so these tests hand a session a fake connection and talk to it directly.
  */
 function fakeConn() {
@@ -56,7 +56,7 @@ function harness({ role, myColor = 'w', timeId = null, myName = 'Me' }) {
 
 const open = [];
 afterEach(() => {
-  // Every _adopt arms an open timeout; leave() clears it.
+  // Channel opening arms a handshake timeout; leave() clears it.
   while (open.length) open.pop().leave();
 });
 

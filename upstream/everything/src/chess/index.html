@@ -129,55 +129,38 @@
           <div id="result-banner" class="result-banner hidden"></div>
 
           <section class="card online-card hidden" id="online-card" aria-label="Online game setup">
+            <p class="online-note">Direct WebRTC: exchange an offer and answer manually. Works best on the same LAN. Different networks, firewalls, or Wi-Fi isolation may block connections. No STUN/TURN or relay is used.</p>
             <div class="online-section" id="online-idle">
               <h2 class="card-title">Play a friend</h2>
-              <p class="online-note" id="online-invite-note" hidden>
-                You&rsquo;ve been invited to a game — press Join to connect.
-              </p>
-              <button class="btn btn-primary btn-block" id="host-btn" type="button">
-                <i data-lucide="plus"></i><span id="host-btn-label">Create game</span>
-              </button>
-              <div class="online-divider" aria-hidden="true"><span>or join with a code</span></div>
-              <form class="join-row" id="join-form">
-                <label class="visually-hidden" for="join-input">Invite code</label>
-                <!-- Invite codes are served uppercase and the peer API matches
-                     them exactly, so a phone keyboard that starts in lowercase
-                     costs the player a failed join. Ask for capitals. -->
-                <input
-                  id="join-input"
-                  name="code"
-                  placeholder="Invite code"
-                  autocomplete="off"
-                  autocapitalize="characters"
-                  autocorrect="off"
-                  spellcheck="false"
-                />
-                <button class="btn btn-ghost" id="join-btn" type="submit">Join</button>
+              <button class="btn btn-primary btn-block" id="host-btn" type="button"><span id="host-btn-label">Create offer</span></button>
+              <div class="online-divider"><span>or paste a friend’s offer</span></div>
+              <form id="join-form">
+                <label for="join-input">Offer from host</label>
+                <textarea class="signal-data" id="join-input" rows="4" maxlength="100000" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Paste the complete offer"></textarea>
+                <button class="btn btn-ghost btn-block" id="join-btn" type="submit">Create answer</button>
               </form>
-              <p class="online-error" id="online-error" role="alert" hidden></p>
             </div>
-
             <div class="online-section hidden" id="online-hosting">
-              <h2 class="card-title">Invite your friend</h2>
-              <div class="invite-box">
-                <code class="invite-code" id="invite-code"></code>
-                <button class="icon-btn" id="copy-code-btn" type="button" title="Copy invite code" aria-label="Copy invite code">
-                  <i data-lucide="copy" class="icon-copy"></i>
-                  <i data-lucide="check" class="icon-check hidden"></i>
-                </button>
-              </div>
-              <button class="btn btn-primary btn-block" id="copy-link-btn" type="button">
-                <i data-lucide="link"></i><span id="copy-link-label">Copy invite link</span>
-              </button>
-              <p class="online-wait"><span class="spinner" aria-hidden="true"></span>Waiting for your friend to join…</p>
+              <h2 class="card-title">1. Send your offer</h2>
+              <label for="invite-code">Offer — copy and send to your friend</label>
+              <textarea class="signal-data" id="invite-code" rows="4" readonly spellcheck="false"></textarea>
+              <button class="btn btn-primary btn-block" id="copy-code-btn" type="button">Copy offer<i class="icon-copy"></i><i class="icon-check hidden"></i></button>
+              <h2 class="card-title">2. Paste their answer</h2>
+              <label for="answer-input">Answer from your friend</label>
+              <textarea class="signal-data" id="answer-input" rows="4" maxlength="100000" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+              <button class="btn btn-primary btn-block" id="accept-answer-btn" type="button">Connect</button>
+              <p class="online-note" id="host-status" role="status"></p>
               <button class="btn btn-ghost btn-block" id="cancel-host-btn" type="button">Cancel</button>
             </div>
-
             <div class="online-section hidden" id="online-joining">
-              <h2 class="card-title">Joining game</h2>
-              <p class="online-wait"><span class="spinner" aria-hidden="true"></span>Connecting to your friend…</p>
+              <h2 class="card-title">Send your answer</h2>
+              <label for="answer-output">Answer — copy and send back to the host</label>
+              <textarea class="signal-data" id="answer-output" rows="4" readonly spellcheck="false"></textarea>
+              <button class="btn btn-primary btn-block" id="copy-answer-btn" type="button">Copy answer</button>
+              <p class="online-note" id="setup-status" role="status">Gathering connection information…</p>
               <button class="btn btn-ghost btn-block" id="cancel-join-btn" type="button">Cancel</button>
             </div>
+            <p class="online-error" id="online-error" role="alert" hidden></p>
           </section>
 
           <section class="card player-card" id="card-top">

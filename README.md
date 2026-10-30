@@ -123,10 +123,12 @@ files may retain unused `KEYCLOAK_ADMIN_PASSWORD` and `GAMES_WEB_CLIENT_SECRET`
 entries; the new stack does not use them. The new Games cookie name requires
 users to sign in again after migration.
 
-The existing optional Puter integrations remain independent: online play in
-Chess, Checkers, and Backgammon and cloud saves in Solitaire and Sudoku may
-still request a Puter account. The Games login only controls access to the
-site. Like any browser-only game, previously downloaded code can be copied or
+Chess, Checkers, and Backgammon use direct WebRTC multiplayer with manual
+offer/answer exchange and no Puter, signaling backend, STUN, or TURN service.
+Both players should use the same LAN; separate networks or restrictive firewalls
+may prevent connections. See each game’s README for setup. Existing optional
+cloud saves in Solitaire and Sudoku may still request a Puter account. The Games
+login only controls access to the site. Like any browser-only game, previously downloaded code can be copied or
 run outside this server; server access checks cannot prevent that.
 
 ## Container image

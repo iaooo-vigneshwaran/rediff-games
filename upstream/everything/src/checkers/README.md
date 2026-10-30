@@ -8,9 +8,8 @@ No frameworks — just vanilla JavaScript, HTML, and CSS, built with Vite.
 - **Player vs. Computer** with three difficulty levels (Easy / Medium / Hard)
 - **Pass & Play** — two players sharing one device
 - **Online play** — private peer-to-peer games over the
-  [Puter Peer API](https://docs.puter.com/Peer/) (WebRTC): create a game,
-  share the invite code or link, and play with resign and rematch support.
-  The Puter SDK is loaded only when online mode is opened.
+  native WebRTC data channel: create an offer, send it to a friend, then paste
+  their answer to connect. No Puter account or cloud service is used.
 - **Clocks** — Bullet, Blitz, and Rapid time controls with a Fischer
   increment, or no limit at all. The clock starts with the first move, so a
   board nobody has touched yet costs nothing. Running out of time loses the
@@ -107,8 +106,8 @@ which touch the DOM:
   bare position would lose.
 - `pdn.js` — building the PDN export.
 
-`src/net/online.js` wraps one private online game over the Puter Peer API: a
-host serves an invite code, exactly one guest may connect, and a jump chain
+`src/net/online.js` wraps one private game over a native WebRTC data channel:
+a host and guest exchange an offer and answer manually, and a jump chain
 crosses the wire as a single message (the whole path, not one message per
 hop) so the position, the turn, and the clock handover stay atomic.
 
@@ -180,3 +179,28 @@ image assets — see `src/style.css`.
 ## License
 
 This repository, including all its contents, sub-projects, modules, and components, is licensed under [MIT](../../LICENSE) unless explicitly stated otherwise. Third-party libraries included in this repository may be subject to their own licenses.
+
+## Direct multiplayer setup
+
+Both players open this game and select Online. The host chooses game settings,
+clicks Create offer, and sends the complete offer text to the guest using an
+existing communication method. The guest pastes it into Offer from host and
+clicks Create answer, then sends the complete answer text back. The host pastes
+that answer and clicks Connect. Keep both pages open throughout the exchange.
+After connection, game actions and rematches travel automatically over WebRTC.
+
+The shared transport is `../shared/direct-webrtc.js`. It waits for ICE gathering
+before exporting each payload and explicitly uses `iceServers: []`. There is no
+signaling server, WebSocket relay, multiplayer backend, STUN, TURN, or Puter
+multiplayer integration. The existing site login remains separate; Host and
+Guest are display labels, not verified account identities.
+
+Works best on the same LAN. Different networks, NAT, firewalls, VPNs, browser
+privacy settings, or Wi-Fi client isolation may prevent a direct connection.
+Manual signaling does not bypass these restrictions. The guest waits up to
+three minutes for the host to apply the answer; the host then allows thirty
+seconds to connect. A failed connection, refresh, or closed page requires a
+fresh exchange. Share connection data only with the intended opponent: it
+contains network connection information. Use HTTPS for deployment; localhost
+is suitable for local browser testing. Clipboard failures allow manual copying
+from the selectable text areas. No camera or microphone access is needed.

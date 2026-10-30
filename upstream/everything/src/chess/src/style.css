@@ -1430,3 +1430,21 @@ select:focus-visible {
     font-size: 11.5px;
   }
 }
+
+/* Complete SDP payloads remain selectable when clipboard permission is unavailable. */
+.signal-data {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 8px 0 12px;
+  padding: 10px;
+  resize: vertical;
+  font: 12px/1.5 monospace;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.online-section label { display: block; margin-top: 12px; }

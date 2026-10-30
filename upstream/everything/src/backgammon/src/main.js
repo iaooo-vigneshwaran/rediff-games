@@ -37,7 +37,7 @@ import { Backgammon, opponent } from './engine/backgammon.js';
 import { canDeriveFairly, rollDice } from './engine/dice.js';
 import { LEVELS, choosePlay, shouldDouble, shouldTake } from './engine/ai.js';
 import { BoardView, nameOf } from './ui/boardView.js';
-import { OnlineSession, loadPuter } from './net/online.js';
+import { OnlineSession } from './net/online.js';
 import {
   clearGame,
   eventsFrom,
@@ -159,7 +159,6 @@ const els = {
   onlineIdle: $('online-idle'),
   onlineHosting: $('online-hosting'),
   onlineJoining: $('online-joining'),
-  onlineInviteNote: $('online-invite-note'),
   onlineError: $('online-error'),
   hostBtn: $('host-btn'),
   hostBtnLabel: $('host-btn-label'),
@@ -168,8 +167,6 @@ const els = {
   joinBtn: $('join-btn'),
   inviteCode: $('invite-code'),
   copyCodeBtn: $('copy-code-btn'),
-  copyLinkBtn: $('copy-link-btn'),
-  copyLinkLabel: $('copy-link-label'),
   cancelHostBtn: $('cancel-host-btn'),
   cancelJoinBtn: $('cancel-join-btn'),
   gameoverDialog: $('gameover-dialog'),
@@ -320,7 +317,6 @@ let waitingForDice = false; // a commit-reveal round is in flight
 let onlineCubeless = false;
 let confirmAction = null;
 let copyCodeTimer = 0;
-let copyLinkTimer = 0;
 
 const cap = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -1407,7 +1403,7 @@ function updateModeUi() {
 
   const creating = onlineUiState === 'creating';
   els.hostBtn.disabled = creating;
-  els.hostBtnLabel.textContent = creating ? 'Creating…' : 'Create game';
+  els.hostBtnLabel.textContent = creating ? 'Gathering offer…' : 'Create offer';
   els.joinInput.disabled = creating;
   els.joinBtn.disabled = creating;
 
@@ -2091,7 +2087,7 @@ function setMode(next) {
 /* Online play                                                         */
 /* ------------------------------------------------------------------ */
 
-function enterOnlineIdle({ inviteCode = null } = {}) {
+function enterOnlineIdle() {
   onlineUiState = 'idle';
   onlineReturnState = 'idle';
   myColor = 'w';
@@ -2111,23 +2107,10 @@ function enterOnlineIdle({ inviteCode = null } = {}) {
   boardView.setOrientation('w');
   announced = '';
   setOnlineError('');
-  els.onlineInviteNote.hidden = !inviteCode;
-  els.joinInput.value = inviteCode || '';
-  announce(
-    inviteCode
-      ? 'You have been invited to a game. Press Join to connect.'
-      : 'Online mode. Create a game or join with an invite code.',
-  );
+  els.joinInput.value = '';
+  $('answer-output').value = '';
+  els.srStatus.textContent = 'Online mode. Create an offer or paste a friend’s offer.';
   renderAll();
-  if (inviteCode) els.joinBtn.focus();
-  // Warm up the SDK and TURN relays so create/join feels instant. Only when
-  // already signed in — never trigger an auth prompt just by opening the tab.
-  loadPuter()
-    .then((puter) => {
-      if (puter.auth?.isSignedIn?.()) return puter.peer.ensureTurnRelays?.();
-      return null;
-    })
-    .catch(() => {});
 }
 
 function makeSession() {
@@ -2154,7 +2137,8 @@ async function createGame() {
   const fromState = onlineUiState; // restore on failure ('ended' keeps its board)
   onlineReturnState = fromState;
   setOnlineError('');
-  els.onlineInviteNote.hidden = true;
+  els.inviteCode.value = '';
+  $('answer-input').value = '';
   onlineUiState = 'creating';
   updateModeUi();
   const color = colorSetting === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : colorSetting;
@@ -2167,11 +2151,14 @@ async function createGame() {
       updateModeUi();
       return;
     }
-    els.inviteCode.textContent = code;
+    els.inviteCode.value = code;
+    $('answer-input').value = '';
+    $('accept-answer-btn').disabled = false;
+    $('host-status').textContent = 'Send the offer, then paste the answer below.';
       onlineUiState = 'hosting';
     updateModeUi();
-    els.copyLinkBtn.focus();
-    announce('Game created. Share the invite code with your friend.');
+    els.copyCodeBtn.focus();
+    announce('Game created. Send the offer to your friend, then paste their answer.');
   } catch (err) {
     if (session !== s) return;
     session = null;
@@ -2185,56 +2172,31 @@ async function joinGame(rawCode) {
   if (mode !== 'online' || !['idle', 'ended'].includes(onlineUiState)) return;
   const fromState = onlineUiState;
   onlineReturnState = fromState;
-  const code = normalizeInviteCode(rawCode);
+  const code = (rawCode || '').trim();
   if (!code) {
-    setOnlineError('Enter an invite code first.');
+    setOnlineError('Paste an offer first.');
     els.joinInput.focus();
     return;
   }
   setOnlineError('');
+  $('answer-output').value = '';
+  $('setup-status').textContent = 'Gathering connection information…';
   onlineUiState = 'joining';
   updateModeUi();
   const s = (session = makeSession());
   try {
-    await s.join(code);
-    // Transport is up; handleSessionStart flips the UI once the host's
-    // handshake arrives, and handleSessionClose covers every failure.
+    const answer = await s.join(code);
+    if (session !== s) return;
+    $('answer-output').value = answer;
+    $('setup-status').textContent = 'Send this answer to the host. Keep this page open while they paste it. Connection expires after three minutes.';
+    // Wait for the host to apply the answer and complete the game handshake.
   } catch (err) {
     if (session !== s) return;
     session = null;
     onlineUiState = fromState;
     updateModeUi();
-    setOnlineError(friendlyError(err, 'Could not join — check the code and try again.'));
+    setOnlineError(friendlyError(err, 'Could not join — check the offer and try a fresh exchange.'));
     els.joinInput.focus();
-  }
-}
-
-/**
- * Join straight from an opened invite link. Signed-in users connect with no
- * further clicks; signed-out users keep the prefilled one-click Join, because
- * the sign-in popup needs a real user gesture to avoid popup blockers.
- */
-async function attemptAutoJoin(code) {
-  try {
-    const puter = await loadPuter();
-    if (!puter.auth?.isSignedIn?.()) return;
-  } catch {
-    return; // SDK unavailable; the manual Join path is still on screen
-  }
-  if (mode !== 'online' || !['idle', 'ended'].includes(onlineUiState)) return;
-  if (els.joinInput.value.trim() !== code) return;
-  joinGame(code);
-}
-
-/** Accept a bare code or a full invite link pasted into the join box. */
-function normalizeInviteCode(raw) {
-  const text = (raw || '').trim();
-  const match = /#g=([^&\s]+)/.exec(text);
-  if (!match) return text;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
   }
 }
 
@@ -2502,9 +2464,7 @@ function handleSessionClose({ reason, wasConnected }) {
   rematchOffered = false;
   waitingForDice = false;
   if (!wasConnected) {
-    // Joining fell through before the game began (hosts keep waiting through
-    // failed attempts, so only guests land here). Fall back to the state the
-    // attempt started from, so a reviewable finished game stays on screen.
+    // A failed manual exchange returns to the setup screen.
     onlineUiState = onlineReturnState;
     updateModeUi();
     setOnlineError(
@@ -2540,31 +2500,17 @@ function handleSessionClose({ reason, wasConnected }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Invite codes and links                                              */
+/* Manual connection data                                              */
 /* ------------------------------------------------------------------ */
 
-function inviteLink() {
-  return `${location.origin}${location.pathname}#g=${encodeURIComponent(
-    session?.inviteCode || '',
-  )}`;
-}
 
-function readInviteFromUrl() {
-  const match = /^#g=(.+)$/.exec(location.hash || '');
-  if (!match) return null;
-  // Strip the hash so a refresh doesn't try to rejoin a stale game.
-  history.replaceState(null, '', location.pathname + location.search);
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
-  }
-}
+
+
 
 async function copyInviteCode() {
   if (!session?.inviteCode) return;
   if (await copyToClipboard(session.inviteCode)) {
-    showToast('Invite code copied.');
+    showToast('Offer copied.');
     const copyIcon = els.copyCodeBtn.querySelector('.icon-copy');
     const checkIcon = els.copyCodeBtn.querySelector('.icon-check');
     copyIcon?.classList.add('hidden');
@@ -2575,22 +2521,27 @@ async function copyInviteCode() {
       checkIcon?.classList.add('hidden');
     }, 1600);
   } else {
-    showToast('Copy failed — select the code and copy it manually.');
+    showToast('Copy failed — select the connection data and copy it manually.');
   }
 }
 
-async function copyInviteLink() {
-  if (!session?.inviteCode) return;
-  if (await copyToClipboard(inviteLink())) {
-    showToast('Invite link copied — send it to your friend.');
-    els.copyLinkLabel.textContent = 'Link copied!';
-    clearTimeout(copyLinkTimer);
-    copyLinkTimer = setTimeout(() => {
-      els.copyLinkLabel.textContent = 'Copy invite link';
-    }, 1600);
-  } else {
-    showToast('Copy failed — select the code and copy it manually.');
+async function acceptAnswer() {
+  const s = session;
+  if (!s || onlineUiState !== 'hosting') return;
+  $('accept-answer-btn').disabled = true;
+  $('host-status').textContent = 'Connecting…';
+  try {
+    await s.acceptAnswer($('answer-input').value);
+  } catch (error) {
+    if (session !== s) return;
+    $('accept-answer-btn').disabled = false;
+    $('host-status').textContent = friendlyError(error, 'Could not apply the answer. Try a fresh exchange.');
   }
+}
+
+async function copyAnswer() {
+  if (await copyToClipboard($('answer-output').value)) showToast('Answer copied. Send it to the host.');
+  else showToast('Copy failed — select the answer and copy it manually.');
 }
 
 /* ------------------------------------------------------------------ */
@@ -2684,7 +2635,8 @@ els.joinForm.addEventListener('submit', (e) => {
   joinGame(els.joinInput.value);
 });
 els.copyCodeBtn.addEventListener('click', copyInviteCode);
-els.copyLinkBtn.addEventListener('click', copyInviteLink);
+$('accept-answer-btn').addEventListener('click', acceptAnswer);
+$('copy-answer-btn').addEventListener('click', copyAnswer);
 els.cancelHostBtn.addEventListener('click', cancelOnlineSetup);
 els.cancelJoinBtn.addEventListener('click', cancelOnlineSetup);
 
@@ -2881,24 +2833,6 @@ window.addEventListener('pageshow', (e) => {
   renderAll();
 });
 
-// An invite link opened while the app is already running only changes the
-// hash (no reload) — pick it up here. A connected game is never interrupted.
-window.addEventListener('hashchange', () => {
-  const code = readInviteFromUrl();
-  if (!code) return;
-  if (session?.connected) {
-    showToast('You are in a game — finish or leave it before joining another.');
-    return;
-  }
-  teardownForModeChange();
-  if (mode !== 'online') {
-    mode = 'online';
-    saveSettings();
-  }
-  enterOnlineIdle({ inviteCode: code });
-  attemptAutoJoin(code);
-});
-
 /* ------------------------------------------------------------------ */
 /* Start                                                               */
 /* ------------------------------------------------------------------ */
@@ -2907,16 +2841,8 @@ buildTimeOptions();
 loadSettings();
 applyTheme();
 
-const inviteFromUrl = readInviteFromUrl();
-if (inviteFromUrl && mode !== 'online') {
-  // Arriving through an invite link overrides the remembered mode (and is
-  // remembered, matching how a link opened into a running app behaves).
-  mode = 'online';
-  saveSettings();
-}
 if (mode === 'online') {
-  enterOnlineIdle({ inviteCode: inviteFromUrl });
-  if (inviteFromUrl) attemptAutoJoin(inviteFromUrl);
+  enterOnlineIdle();
 } else if (!restoreGame()) {
   // Nothing to pick up (or what was stored no longer replays): start fresh.
   newGame();
