@@ -11,70 +11,79 @@ server {
     location = /solitaire { return 308 /solitaire/; }
     location = /sudoku { return 308 /sudoku/; }
 
-    location = /oauth2/auth {
+    location = /api/auth/session {
+        proxy_pass http://auth-backend:3000/api/auth/session;
+        proxy_set_header Cookie $http_cookie;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 5s;
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location = /_auth_check {
         internal;
-        proxy_pass http://oauth2-proxy:4180/oauth2/auth;
+        proxy_pass http://auth-backend:3000/api/auth/session;
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
-        proxy_set_header X-Original-URI $request_uri;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $http_host;
         proxy_set_header Cookie $http_cookie;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 5s;
     }
 
-    location /oauth2/ {
-        proxy_pass http://oauth2-proxy:4180;
-        proxy_buffer_size 16k;
-        proxy_buffers 8 16k;
-        proxy_busy_buffers_size 32k;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
+    # Local development login only. Replace with Rediff's approved login flow.
+    location = /auth/login {
+        add_header Cache-Control "no-store" always;
+        try_files /dev-login.html =404;
     }
 
-    location @oauth2_start {
-        rewrite ^ /oauth2/start break;
-        proxy_pass http://oauth2-proxy:4180;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $http_host;
-        proxy_set_header X-Auth-Request-Redirect $scheme://$http_host$request_uri;
+    # Keep logout separate so it can later redirect to Rediff logout.
+    location = /auth/logout {
+        add_header Cache-Control "no-store" always;
+        try_files /dev-logout.html =404;
     }
 
-    location = /auth/config {
-        default_type application/json;
-        add_header Cache-Control "no-store";
-        return 200 '{"issuer":"${OIDC_ISSUER_URL}","clientId":"${OIDC_CLIENT_ID}"}';
+    location @login {
+        return 302 /auth/login?return=$request_uri;
+    }
+
+    location @auth_unavailable {
+        default_type text/html;
+        add_header Cache-Control "no-store" always;
+        return 503 '<h1>Unable to verify your login</h1><p>Please try again shortly.</p>';
     }
 
     location ^~ /chess/ {
-        auth_request /oauth2/auth;
-        error_page 401 = @oauth2_start;
+        auth_request /_auth_check;
+        error_page 401 = @login;
+        error_page 500 502 503 504 = @auth_unavailable;
         add_header Cache-Control "no-store" always;
         try_files $uri $uri/ =404;
     }
     location ^~ /checkers/ {
-        auth_request /oauth2/auth;
-        error_page 401 = @oauth2_start;
+        auth_request /_auth_check;
+        error_page 401 = @login;
+        error_page 500 502 503 504 = @auth_unavailable;
         add_header Cache-Control "no-store" always;
         try_files $uri $uri/ =404;
     }
     location ^~ /backgammon/ {
-        auth_request /oauth2/auth;
-        error_page 401 = @oauth2_start;
+        auth_request /_auth_check;
+        error_page 401 = @login;
+        error_page 500 502 503 504 = @auth_unavailable;
         add_header Cache-Control "no-store" always;
         try_files $uri $uri/ =404;
     }
     location ^~ /solitaire/ {
-        auth_request /oauth2/auth;
-        error_page 401 = @oauth2_start;
+        auth_request /_auth_check;
+        error_page 401 = @login;
+        error_page 500 502 503 504 = @auth_unavailable;
         add_header Cache-Control "no-store" always;
         try_files $uri $uri/ =404;
     }
     location ^~ /sudoku/ {
-        auth_request /oauth2/auth;
-        error_page 401 = @oauth2_start;
+        auth_request /_auth_check;
+        error_page 401 = @login;
+        error_page 500 502 503 504 = @auth_unavailable;
         add_header Cache-Control "no-store" always;
         try_files $uri $uri/ =404;
     }

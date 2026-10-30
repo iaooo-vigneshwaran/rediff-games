@@ -4,3 +4,4 @@ __pycache__/
 *.py[cod]
 upstream/everything/src/*/node_modules/
 upstream/everything/src/*/dist/
+backend/node_modules/

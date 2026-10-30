@@ -32,3 +32,13 @@ h1 span { color: #c91d2c; }
 @media (prefers-reduced-motion: reduce) {
   .game { transition: none; }
 }
+
+.auth-page { max-width: 480px; }
+.auth-form { display: grid; gap: 12px; padding: 28px; background: #fff; border: 1px solid #e7e2dd; border-radius: 16px; }
+.auth-form label { font-weight: 700; }
+.auth-form input { width: 100%; padding: 12px; border: 1px solid #aaa; border-radius: 8px; font: inherit; }
+.auth-form button { margin-top: 8px; padding: 12px; border: 0; border-radius: 8px; background: #c91d2c; color: #fff; font: inherit; cursor: pointer; }
+.auth-form button:disabled { opacity: .6; cursor: wait; }
+.auth-form input:focus-visible, .auth-form button:focus-visible { outline: 3px solid #25252b; outline-offset: 3px; }
+.auth-error { margin: 0; color: #ad1925; }
+.auth-note { color: #66656a; font-size: 14px; line-height: 1.5; }

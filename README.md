@@ -1,144 +1,108 @@
 # Rediff Games
 
-A static games portal and five independent builds of the games in
-[HeyPuter/everything](https://github.com/HeyPuter/everything), pinned at
-`7702e237b7945293158c50c4f3839b41287b51d4`.
+A public static portal and five independently built games: Chess, Checkers,
+Backgammon, Solitaire and Sudoku. Source is vendored from HeyPuter/everything,
+pinned at `7702e237b7945293158c50c4f3839b41287b51d4`.
 
-The upstream source is vendored in `upstream/everything/src/{chess,checkers,backgammon,solitaire,sudoku}`.
-Each app has its own `package.json`, dependencies, Vite configuration, and build.
-The Solitaire entry point has one local adaptation: it retires its offline service
-worker so an older cached game page cannot bypass the new session check.
-The portal is plain HTML, CSS, and JavaScript.
+NGINX serves the files and checks authentication before serving any game path,
+including assets. A small Node.js + Fastify service validates selected cookies.
+The homepage calls the same endpoint to display the verified user's name.
 
-## Build locally
+## Local development
 
-Use Node.js 22.12 or newer. This command installs dependencies and builds each
-game independently, then assembles `dist/`:
+Build and start the two services with `docker compose up --build -d`, then open
+http://localhost:8080/. Docker provides Node 22; no database or generated secrets
+are needed. The backend is exposed only within the Compose network.
 
-```sh
-sh scripts/build.sh
-```
+The committed Compose configuration explicitly enables a development-only stub.
+Open http://localhost:8080/auth/login. Available users are `alice`, `bob`,
+`user1`, `user2`, and `user3`; the password for every user is `test`. Credentials are matched in frontend JavaScript only.
+The homepage Log out link opens `/auth/logout`, which clears the development
+cookie and returns to the homepage. No login/logout backend APIs are added. This does not
+log into or out of Rediff. Direct game visits redirect here and preserve the
+requested game URL and query string. Only same-origin game/home destinations
+are accepted by the development page.
 
-The generated `dist/` is only a static build. Serving it with a plain static
-server makes every game public; use the NGINX and OAuth2 Proxy stack below to
-enforce login. The NGINX configuration also redirects `/game` to `/game/` for
-each game.
+The stub recognizes fixed base64url-encoded fixture tokens in
+`games_dev_session`. Encoding is not authentication: only the known fixture
+values are accepted. These tokens are public development fixtures, never real
+credentials. Passwords and tokens are public in the frontend; this is not a
+production credential check. The local UI sets a JavaScript-readable test cookie so no extra
+backend API is required; production authentication cookies may be HttpOnly.
+Do not use real Rediff cookie values for local tests.
 
-## Local login test
+## Authentication contract
 
-The local stack runs five services. NGINX serves the portal and games, and OAuth2
-Proxy manages the Games session using OIDC directly with Authentik.
-Authentik server, Authentik worker, and PostgreSQL provide the temporary Rediff
-SSO. No real Rediff account is used.
+`GET /api/auth/session` reads the browser's Cookie header. Cookie selection uses
+an explicit allowlist, preserves values without URL-decoding, requires every
+configured cookie, and rejects duplicate selected cookie names. Unrelated
+cookies are never passed to the validator. Cookies and identity responses are
+not logged. Responses use `Cache-Control: no-store`.
 
-The request path is:
+| Status | Response / behavior |
+| --- | --- |
+| 200 | `{"authenticated":true,"user":{"id":"demo-alice","name":"Alice"}}` |
+| 401 | `{"authenticated":false,"user":null}`; game visits redirect to login |
+| 503 | Temporary verification failure; game access remains blocked |
 
-```text
-Browser -> NGINX -> OAuth2 Proxy -> Authentik
-Authentik -> PostgreSQL (identity and session storage)
-```
+NGINX calls the same endpoint using an internal subrequest. Since NGINX treats
+non-2xx/401/403 authentication results as errors, game locations map these
+failures to a 503 error page. Proxy connection/read timeouts are 2/5 seconds.
+The homepage distinguishes logged-out responses from outages. There is no
+validation cache or Games-owned session; each protected request is validated.
+A short cache may be added after agreeing on revocation and upstream capacity.
 
-The Authentik worker handles background jobs and applies the declarative
-configuration in `authentik/blueprints/rediff-sso.yaml`; it is not in the
-browser request path. Alice and Bob, their password hashes, Authentik sessions,
-and the OIDC provider configuration are stored in PostgreSQL's persistent
-`authentik-database` Docker volume.
+## Real Rediff integration: not configured yet
 
-First, generate an ignored `.env` file containing random local client secrets,
-database credentials, admin credentials, and passwords for the test users
-`alice` and `bob`. Running the command again safely adds missing settings and
-does not replace existing values:
+The Rediff API URL, request authentication, timeout/retry policy, response
+contract, required cookie names, login return parameter and logout contract are
+unknown. Do not infer authentication from names such as Rlo or Rl.
 
-```sh
-python3 scripts/setup-local-auth.py
-```
+Replace the validator adapter in `backend/app.js` once these details are known.
+The adapter receives only selected cookie values and returns a verified
+`{id, name}`, null for an invalid session, or throws for service failures.
+Configure `AUTH_MODE=rediff` and `AUTH_COOKIE_NAMES` with the agreed names.
+The executable currently refuses to start in real mode until the adapter is
+supplied; it never silently falls back to mock authentication.
 
-Open `.env` locally to see the generated test-user passwords. Then build and
-start all five local services. On the first start, Authentik initializes its
-database and can take a few minutes to become healthy:
+Stub mode requires `NODE_ENV=development` or `test`; production startup rejects
+it. Before deployment, replace the development Compose environment, replace
+NGINX's local login redirect with the approved Rediff login/return flow, and
+replace the `/auth/logout` route with Rediff logout and exclude the local
+login/logout HTML/JavaScript from the production image. Use HTTPS.
+The existing Compose file is for local development only.
 
-```sh
-docker compose up --build -d
-```
+Authentication cookies must be eligible for games.rediff.com, including their
+domain and path. HttpOnly does not stop browsers sending eligible cookies to
+the backend. The backend needs no database. Local logout clears only the development
+cookie; clearing it cannot revoke a Rediff login. Real Rediff logout awaits
+its contract.
 
-Open `http://localhost:8080/` and click a game. Authentik asks for the username
-and then the password; sign in as `alice` or `bob`. You return to the exact game
-URL originally requested. The portal shows the signed-in username and provides
-Log out. The next game visit after a complete logout requires signing in again.
+The old Authentik blueprint is retained as a historical fixture but is not
+loaded by Compose. OAuth2 Proxy, Authentik and PostgreSQL no longer run in this
+stack. The old database volume declaration is retained and no existing data or
+.env credentials are deleted. Existing old-stack containers are not stopped by
+these source changes. Do not use volume-deletion commands during migration if
+you wish to preserve that data. The old setup script now prints local guidance.
 
-The local administration endpoints are:
+## Verification and builds
 
-- Authentik: `http://sso.localhost:9000/if/admin/`, username `akadmin`, password
-  `AUTHENTIK_ADMIN_PASSWORD` from `.env`.
+For backend dependencies, `npm ci --prefix backend` installs the lockfile using
+Node 22 or newer. `npm test --prefix backend` checks cookie filtering, stub
+restrictions, valid/invalid/expired sessions and validator failures.
+`node scripts/check-portal-auth.mjs` checks the homepage states and logout link.
+`node scripts/check-dev-login.mjs` checks form credentials, cookies and safe
+return destinations. `node scripts/check-dev-logout.mjs` checks cookie removal
+and the homepage redirect.
+Against a running local stack, `python3 scripts/smoke-auth.py` checks all five
+games, asset boundaries, redirects and outages. Set `GAMES_TEST_URL` to test a
+different local address. The old logout check delegates to the portal check.
 
-After the services are healthy, this dependency-free smoke check verifies
-Authentik health and discovery, all protected game routes, the login redirect,
-and preservation of the requested URL:
+`sh scripts/build.sh` builds all games and assembles dist/ using Node 22.12 or
+newer. A plain static server bypasses authentication; use NGINX and the backend.
+Solitaire's existing service-worker retirement remains to prevent older offline
+caches bypassing server checks. Previously downloaded game code cannot be revoked.
 
-```sh
-python3 scripts/smoke-auth.py
-```
-
-Check the portal logout handler and its discovery-failure fallback with Node.js:
-
-```sh
-node scripts/check-portal-logout.mjs
-```
-
-The interactive username/password and logout steps must be checked in a browser
-because Authentik's flow UI is JavaScript-driven. Direct requests for `/chess/`,
-`/checkers/`, `/backgammon/`, `/solitaire/`, and `/sudoku/`, including their
-asset files, pass through NGINX's session check. The portal remains public. The
-development stack uses HTTP and sets `OAUTH2_PROXY_COOKIE_SECURE=false` only to
-make local testing possible.
-
-These URLs and Authentik users are local fixtures, not production settings. For
-production, expose Games and the SSO provider over HTTPS, set the session cookie's
-Secure flag, and use production secrets. To replace the temporary Authentik fixture
-with real Rediff SSO, configure OAuth2 Proxy's issuer, client credentials, scopes,
-and allowed logout destination; set Games' `OIDC_ISSUER_URL` and `OIDC_CLIENT_ID`
-to match. Register the Games callback and post-logout URLs with that provider.
-This requires Rediff's actual OIDC endpoints, identity claims, and logout contract.
-In particular, this fixture marks local email addresses as verified; review that
-trust against Rediff's actual email-verification guarantee. The temporary Authentik
-server, worker, and PostgreSQL services can then be removed.
-
-OAuth2 Proxy requests authorization code flow with PKCE and `offline_access` for
-refresh tokens. The portal discovers the OIDC end-session endpoint, then sends
-logout through OAuth2 Proxy so it inserts the ID token hint and clears the Games
-cookie before redirecting to Authentik. Complete Authentik's logout flow to end
-the SSO session. If discovery fails, the fallback clears only the Games session.
-
-When upgrading an existing local stack, apply the updated provider blueprint
-before recreating OAuth2 Proxy. This preserves the Authentik database and users:
-
-```sh
-docker compose exec -T authentik-worker ak apply_blueprint /blueprints/custom/rediff-sso.yaml
-docker compose up --build -d
-```
-
-The old Keycloak container may remain as an unused orphan after upgrading. It
-can be stopped without deleting it or the Authentik database. Existing `.env`
-files may retain unused `KEYCLOAK_ADMIN_PASSWORD` and `GAMES_WEB_CLIENT_SECRET`
-entries; the new stack does not use them. The new Games cookie name requires
-users to sign in again after migration.
-
-The existing optional Puter integrations remain independent: online play in
-Chess, Checkers, and Backgammon and cloud saves in Solitaire and Sudoku may
-still request a Puter account. The Games login only controls access to the
-site. Like any browser-only game, previously downloaded code can be copied or
-run outside this server; server access checks cannot prevent that.
-
-## Container image
-
-The image contains the assembled static site and NGINX, but protected game
-paths depend on OAuth2 Proxy. Run it with the Compose stack above or provide
-a compatible OIDC-configured OAuth2 Proxy and set `OIDC_ISSUER_URL` and
-`OIDC_CLIENT_ID`. The discovery endpoint must permit browser access for logout.
-Generated metadata points to `games.rediff.com`.
-
-## Licensing
-
-The Everything repository is MIT licensed. The assembled site includes its
-`LICENSE.txt`. Chess piece art has its own attribution in
-`chess/pieces/LICENSE.txt`.
+Optional Puter multiplayer/cloud-save logins remain independent of Games login.
+The upstream code is MIT licensed; assembled output includes LICENSE.txt and
+Chess piece attribution at chess/pieces/LICENSE.txt.

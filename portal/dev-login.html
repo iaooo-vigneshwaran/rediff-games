@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Log in | Rediff Games</title>
+    <link rel="stylesheet" href="/assets/portal.css" />
+    <script type="module" src="/assets/dev-login.js"></script>
+  </head>
+  <body>
+    <main class="page auth-page">
+      <header class="header">
+        <p class="eyebrow">Rediff Games</p>
+        <h1>Log in</h1>
+        <p>Sign in to continue to your game.</p>
+      </header>
+      <form id="login-form" class="auth-form" method="post" action="/auth/login">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required />
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <p id="login-error" class="auth-error" role="alert" hidden></p>
+        <button type="submit" disabled>Log in</button>
+      </form>
+      <noscript><p>Enable JavaScript to use the local development login.</p></noscript>
+      <p class="auth-note">Local development only. Users: alice, bob, user1, user2, user3. Password for all users: test. Do not enter your Rediff password.</p>
+      <p><a href="/">Return to Games</a></p>
+    </main>
+  </body>
+</html>

@@ -11,6 +11,10 @@ mkdir -p "$output_dir/assets"
 cp "$project_dir/portal/index.html" "$output_dir/index.html"
 cp "$project_dir/portal/assets/portal.css" "$output_dir/assets/portal.css"
 cp "$project_dir/portal/assets/portal.js" "$output_dir/assets/portal.js"
+cp "$project_dir/portal/dev-login.html" "$output_dir/dev-login.html"
+cp "$project_dir/portal/dev-logout.html" "$output_dir/dev-logout.html"
+cp "$project_dir/portal/assets/dev-login.js" "$output_dir/assets/dev-login.js"
+cp "$project_dir/portal/assets/dev-logout.js" "$output_dir/assets/dev-logout.js"
 cp "$project_dir/upstream/everything/LICENSE" "$output_dir/LICENSE.txt"
 
 for game in chess checkers backgammon solitaire sudoku; do
